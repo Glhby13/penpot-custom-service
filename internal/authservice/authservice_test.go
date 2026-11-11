@@ -54,8 +54,11 @@ func TestTransitEncoding(t *testing.T) {
 func TestManagedPasswordStable(t *testing.T) {
 	p := NewPenpot("http://x", "/api/rpc/command", strings.Repeat("s", 32))
 	a, b := p.ManagedPassword("Ada@BTN.co.id"), p.ManagedPassword("ada@btn.co.id")
-	if a != b || len(a) != 64 {
-		t.Fatalf("not stable/64 hex: %q %q", a, b)
+	if a != b || len(a) != 68 {
+		t.Fatalf("not stable/68 chars: %q %q", a, b)
+	}
+	if !strings.HasPrefix(a, "Aa1#") {
+		t.Fatalf("missing policy prefix: %q", a)
 	}
 	if a == NewPenpot("http://x", "/api/rpc/command", strings.Repeat("t", 32)).ManagedPassword("ada@btn.co.id") {
 		t.Fatal("seed ignored")

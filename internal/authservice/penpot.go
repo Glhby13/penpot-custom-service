@@ -28,12 +28,13 @@ func NewPenpot(baseURL, rpcPath, seed string) *Penpot {
 	return &Penpot{baseURL: baseURL, rpcPath: rpcPath, seed: seed, httpClient: &http.Client{Timeout: 20 * time.Second}}
 }
 
-// ManagedPassword is the password the service sets for a user's Penpot profile: HMAC-SHA256(seed, email), never
+// ManagedPassword is the password the service sets for a user's Penpot profile: Aa1# + HMAC-SHA256(seed, email), never
 // shown to anyone. The user signs in with the AD password; Penpot only ever sees this value.
+// The prefix guarantees lowercase, uppercase, digit, and special character required by Penpot's password policy.
 func (p *Penpot) ManagedPassword(email string) string {
 	m := hmac.New(sha256.New, []byte(p.seed))
 	m.Write([]byte("penpot-managed::" + strings.ToLower(email)))
-	return hex.EncodeToString(m.Sum(nil))
+	return "Aa1#" + hex.EncodeToString(m.Sum(nil))
 }
 
 // rpcResult is an unmodified answer of the Penpot backend.
