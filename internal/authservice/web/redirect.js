@@ -11,7 +11,7 @@
       if (Date.now() - last < 10000) return;
       sessionStorage.setItem(KEY, String(Date.now()));
     } catch (e) { return; }
-    location.replace('/?_=' + Date.now());
+    location.replace('/');
   }
   check();
   window.addEventListener('hashchange', check);

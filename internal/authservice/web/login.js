@@ -156,8 +156,8 @@
     }).then(function (res) {
       if (res.status === 200) {
         var hash = location.hash;
-        if (/^#\/auth\//.test(hash)) hash = '';
-        location.replace('/?_=' + Date.now() + hash);
+        if (!hash || /^#\/auth\//.test(hash)) hash = '#/dashboard';
+        location.replace('/' + hash);
         return;
       }
       var msg = (res.body && res.body.error_description) ||
