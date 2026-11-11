@@ -158,9 +158,14 @@ refreshed periodically and denied on lookup failure. No original Penpot image is
 ## Local checks
 
 ```
-go vet ./... && go test ./...
+go vet ./... && go test -race ./...
+node --test internal/authservice/web/customize.test.cjs
+postman collection run postman/penpot-security.postman_collection.json --insecure
+node e2e/mcp_abuse.mjs
 ```
 
 ## Riwayat perubahan penting
 
 - 2026-11-12 — Codex: role-based MCP gateway and native-token/session binding, security abuse tests, first-user onboarding and Enterprise banner suppression; password UI retained.
+
+Deployment/test evidence: [validation report](docs/VALIDATION-2026-11-12.md). Go1.27.4 is required; Go CI gates run sequentially. Lab acceptance account `lab-admin` was explicitly assigned the MCP group; this is a role grant, not an admin bypass.

@@ -28,7 +28,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"Request denied at server boundary\", function () { pm.expect([401]).to.include(pm.response.code); });"
+              "pm.test(\"Anonymous has no MCP capability\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().mcp).to.equal(false); });"
             ]
           }
         }
