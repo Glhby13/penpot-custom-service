@@ -32,6 +32,8 @@ type Claims struct {
 	FamilyName        string
 	// Roles are the client roles of the Penpot client only (resource_access[client].roles).
 	Roles []string
+	// RefreshToken lets the service end the Keycloak session at sign-out. It is kept in memory only, never logged.
+	RefreshToken string
 }
 
 // HasRole reports whether the user holds the client role.
@@ -121,8 +123,9 @@ func (k *Keycloak) DirectGrant(ctx context.Context, username, password string) (
 	}
 
 	var tr struct {
-		AccessToken string `json:"access_token"`
-		IDToken     string `json:"id_token"`
+		AccessToken  string `json:"access_token"`
+		IDToken      string `json:"id_token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, fmt.Errorf("direct grant response: %w", err)
@@ -133,7 +136,28 @@ func (k *Keycloak) DirectGrant(ctx context.Context, username, password string) (
 			return nil, fmt.Errorf("parse token: %w", err)
 		}
 	}
+	claims.RefreshToken = tr.RefreshToken
 	return claims, nil
+}
+
+// Revoke ends the Keycloak session behind a refresh token (OIDC logout endpoint). Best effort for the caller.
+func (k *Keycloak) Revoke(ctx context.Context, refreshToken string) error {
+	form := url.Values{"client_id": {k.clientID}, "client_secret": {k.clientSecret}, "refresh_token": {refreshToken}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, k.issuerURL+"/protocol/openid-connect/logout", strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("keycloak logout: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := k.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("keycloak logout: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("keycloak logout: status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // parseClaims reads the payload of a JWT that came straight from Keycloak's token endpoint over TLS in the same

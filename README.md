@@ -166,6 +166,7 @@ node e2e/mcp_abuse.mjs
 
 ## Riwayat perubahan penting
 
+- 2026-11-12 — Claude Code: sign-out now also ends the Keycloak session (refresh token kept in memory per Penpot session, revoked on `logout`; lost on pod restart, then idle timeout applies) and Penpot's stock login route (`#/auth/login`) is hidden and redirected to the custom sign-in page at once. Frontend + auth-service only, no DDL/env. Lab only, office 🟡.
 - 2026-11-12 — Codex: role-based MCP gateway and native-token/session binding, security abuse tests, first-user onboarding and Enterprise banner suppression; password UI retained.
 
 Deployment/test evidence: [validation report](docs/VALIDATION-2026-11-12.md). Go1.27.4 is required; Go CI gates run sequentially. Lab acceptance account `lab-admin` was explicitly assigned the MCP group; this is a role grant, not an admin bypass.

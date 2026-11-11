@@ -62,16 +62,19 @@ type Server struct {
 	// proxy forwards "/" to the Penpot frontend for signed-in users (nil = the sign-in page is not served).
 	proxy http.Handler
 	mcp   *mcpGuard
+	// sessions maps Penpot sessions to Keycloak refresh tokens so sign-out can end the Keycloak session too.
+	sessions *sessionStore
 }
 
 // NewServer wires the server to Keycloak and the Penpot backend.
 func NewServer(cfg *Config, log *slog.Logger) *Server {
 	s := &Server{
-		cfg: cfg,
-		kc:  NewKeycloak(cfg.KeycloakURL, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.KeycloakInsecureTLS),
-		pp:  NewPenpot(cfg.PenpotBackendURL, cfg.PenpotRPCPath, cfg.ManagedPasswordSeed),
-		log: log.With("component", "auth-server"),
-		lim: newLimiter(),
+		cfg:      cfg,
+		kc:       NewKeycloak(cfg.KeycloakURL, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.KeycloakInsecureTLS),
+		pp:       NewPenpot(cfg.PenpotBackendURL, cfg.PenpotRPCPath, cfg.ManagedPasswordSeed),
+		log:      log.With("component", "auth-server"),
+		lim:      newLimiter(),
+		sessions: newSessionStore(),
 	}
 	if cfg.PenpotFrontendURL != "" {
 		if p, err := newFrontendProxy(cfg.PenpotFrontendURL); err == nil {
@@ -96,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", ok(`{"status":"ready"}`))
 	for _, prefix := range rpcPrefixes {
 		mux.HandleFunc("POST "+prefix+"login-with-password", s.handleLogin)
+		mux.HandleFunc("POST "+prefix+"logout", s.handleLogout)
 		for cmd, code := range blockedCommands {
 			mux.HandleFunc("POST "+prefix+cmd, s.blocked(code))
 		}
@@ -177,6 +181,7 @@ func (s *Server) authenticate(ctx context.Context, typed, password, ip string) (
 		s.log.Error("penpot refused managed sign-in", "user", penpotEmail, "status", res.Status, "body", snippet(res.Body, 400))
 		return nil, &authFail{http.StatusBadGateway, "internal", "service-unavailable", msgSignInFailed, false}
 	}
+	s.rememberSession(res, claims.RefreshToken)
 	s.lim.reset("u:" + username)
 	s.log.Info("sign-in ok", "user", penpotEmail, "admin", s.cfg.AdminRole != "" && claims.HasRole(s.cfg.AdminRole))
 	return res, nil

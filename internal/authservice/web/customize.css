@@ -11,3 +11,6 @@ html:not([data-uxstudio-mcp="allowed"]) [data-testid="settings-integrations"],
 html:not([data-uxstudio-mcp="allowed"]) .main_ui_settings_integrations__integrations {
   display: none !important;
 }
+
+/* Penpot's own login route is never shown (the redirect script sends it to the service's sign-in page). */
+html[data-uxstudio-login-route="true"] body { visibility: hidden !important; }
