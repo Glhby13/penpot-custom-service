@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>UX Studio · Sign in</title>
+<link rel="icon" href="/auth-ui/assets/logo.png" type="image/png">
+<link rel="stylesheet" href="/auth-ui/assets/login.css">
+</head>
+<body>
+<button id="theme" class="theme" type="button" aria-label="Toggle dark mode">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+</button>
+<main class="shell">
+  <section class="card">
+    <img class="brand" src="/auth-ui/assets/logo.png" alt="UX Studio" width="320" height="60">
+    <h1>Sign in</h1>
+    <form id="f" novalidate>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+      <label for="password">Password</label>
+      <div class="pw">
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button id="show" class="show" type="button">Show</button>
+      </div>
+      <div id="err" class="err" role="alert" hidden></div>
+      <button id="go" class="btn" type="submit">Sign in with AD BTN</button>
+      <div id="local-box" hidden>
+        <div class="or"><span>or</span></div>
+        <button id="local" class="btn secondary" type="button">Sign in with local account</button>
+        <p class="hint">Emergency accounts only. Enter the full e-mail address as the username.</p>
+      </div>
+    </form>
+    <p class="foot">&copy; 2026 PT Bank Tabungan Negara (Persero) Tbk<br>Tim Platform Engineering</p>
+  </section>
+</main>
+<script src="/auth-ui/assets/login.js"></script>
+</body>
+</html>
