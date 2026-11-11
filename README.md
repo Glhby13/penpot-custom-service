@@ -52,7 +52,7 @@ right away. If Argo gave up on the second one after its retries, press Sync on i
 1. Client `Penpot-<Env>` (the name must equal `OIDC_CLIENT_ID`, case included): confidential, **Direct access grants
    ON**, service accounts not needed. Copy the secret.
 2. **Every AD user may sign in; no role is needed for that** (`ACCESS_ROLE` is empty). The only client role is
-   `penpot-admin` (Penpot administrators, later the only ones allowed to use MCP, see "Admin-only MCP"); assign it
+   `penpot-admin` (Penpot administrators, later administrators; MCP uses the separate `mcp-access` role, see "MCP access by Keycloak role"); assign it
    to the admin AD group. Do not create `penpot-access` / `penpot-user`, and do **not** run
    `keycloak_require_access_role.py` (it would refuse users without a role; `--undo` removes it). To restrict
    sign-in later, set `ACCESS_ROLE` and give that role to the allowed groups.
@@ -92,24 +92,59 @@ Open the browser dev tools on the login page and confirm:
 - error messages: a wrong password shows Penpot's "incorrect credentials"; a user without the role shows the
   "profile blocked" message.
 
-## Admin-only MCP (prepared, not enforced yet)
+## MCP access by Keycloak role
 
-Today MCP is off (`mcp.replicaCount: 0`, no `enable-mcp` flag). The `penpot-admin` role already exists end to end:
-Keycloak issues it, the service reads it from the token (`ADMIN_ROLE`, default `penpot-admin`) and logs `admin=true|false`
-at every sign-in. Nothing is blocked by it yet.
+MCP uses the original Penpot MCP image. Enable the upstream `enable-mcp` flag and one MCP replica,
+then configure this gateway with:
 
-When MCP is turned on, Penpot lets any signed-in user create an MCP key, so the restriction has to be added in front
-of it. Planned design, same mechanism as the blocked commands above:
-1. Look up in the Penpot source (`backend/src/app/rpc/commands/`, tag matching the chart's `appVersion`) the exact
-   command(s) that create MCP keys, and the path the frontend proxy uses for the MCP server (`/mcp...`).
-2. Handle those paths inside this service (it already sees every request of the Penpot host).
-3. The service identifies the caller from their Penpot session (backend `get-profile` with the cookie), checks that
-   e-mail for `penpot-admin` in Keycloak, and only then forwards the request to the Penpot backend; everyone else
-   gets 403. Checking Keycloak needs the client's service account with the realm-management roles `view-users` and
-   `query-clients` (n8n's auth-service uses the same).
+| Environment | Purpose |
+|---|---|
+| `MCP_ENABLED=true` | Opt-in global switch; false denies everybody |
+| `MCP_ACCESS_ROLE=mcp-access` | Required **Penpot client role**, exact case; no admin bypass |
+| `MCP_PUBLIC_ORIGIN=https://uxstudio.lab.local` | Allowed browser origin |
+| `MCP_SERVER_URL=http://penpot-mcp:4401` | Internal official Streamable HTTP service |
+| `MCP_WS_URL=http://penpot-mcp:4402` | Internal official plugin WebSocket service |
 
-The two things that must be confirmed first are the command names and whether the MCP server itself authenticates
-requests with the key only. Do that when MCP is enabled; it is not guessed here.
+Map `/penpot/mcp-access` to the client role in Keycloak. The Penpot client's service account needs
+read-only user/client lookup and effective client role-mapping lookup (`view-users`, `query-users`,
+`query-clients`, `view-clients` in the lab). No user-management write permission is needed.
+
+`GET /auth-ui/capabilities` verifies the native Penpot session and its managed identity before returning
+`{ "mcp": true|false }`. Integrations and MCP entry points are hidden for users without the role;
+direct token RPCs and MCP connections are independently checked server-side. Local break-glass accounts
+cannot obtain MCP access because they do not have an AD-managed profile password.
+
+The gateway protects `create-access-token` (MCP type only), `get-access-tokens`,
+`get-current-mcp-token`, and `delete-access-token` on both current and legacy RPC prefixes.
+Create/delete require POST without query parameters. Public email-change requests are blocked;
+managed-profile ID verification also prevents an email-changing profile from impersonating a different AD identity.
+Password menu and its existing backend guard remain unchanged.
+
+Penpot MCP tokens are opaque native JWEs. The gateway wraps tokens issued/listed through it in a
+versioned HMAC-authenticated envelope (`ppm1`), using a domain-separated key derived from the existing
+managed-password seed. Only signed envelopes are accepted at `/mcp/stream` and `/mcp/ws`.
+Their native token must still be present as an unexpired MCP token on the owner's native Penpot account.
+Raw native tokens, malformed envelopes, duplicate token/session parameters, and cross-user MCP session IDs are rejected.
+Returned Streamable HTTP session IDs are signed and bound to their exact MCP token.
+
+The gateway sends MCP traffic directly to the official MCP service, avoiding native frontend query logs.
+**Disable access logging for the Penpot ingress and its edge MCP locations:** upstream's protocol carries
+`userToken` in the URL, which is a credential and must not appear in access logs. The MCP service is private
+and must be reachable only from the gateway (NetworkPolicy); its debug/REPL ports are not exposed.
+
+Authorization fails closed if identity/token validation is unavailable. Positive role/native-token checks
+are cached for at most 15 seconds; active WebSockets are rechecked every 15 seconds and identity lookup has a
+5-second deadline (revocation closes them within approximately 35 seconds). Stream HTTP requests have a
+30-second maximum duration, so an already admitted request may finish within approximately 45 seconds of
+revocation. Expensive checks are bounded to 16 concurrent requests, with 120 MCP/capability requests per IP
+per minute per gateway replica. These limits do not apply to ordinary design/file editing traffic.
+
+## UI customizations
+
+The official `disable-onboarding` flag suppresses first-user onboarding. Gateway-injected, same-origin
+assets hide only the Enterprise trial banner identified by its upstream container and exact heading;
+current plan/renewal notices remain available. Integrations visibility is driven by server capabilities,
+refreshed periodically and denied on lookup failure. No original Penpot image is modified.
 
 ## Known limits
 
@@ -125,3 +160,7 @@ requests with the key only. Do that when MCP is enabled; it is not guessed here.
 ```
 go vet ./... && go test ./...
 ```
+
+## Riwayat perubahan penting
+
+- 2026-11-12 — Codex: role-based MCP gateway and native-token/session binding, security abuse tests, first-user onboarding and Enterprise banner suppression; password UI retained.

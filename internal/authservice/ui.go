@@ -20,7 +20,7 @@ import (
 // request, and "/" for a signed-in user, is proxied to the Penpot frontend untouched, except that a tiny script is
 // added to its start page which sends "#/auth/login" (session expired, logout) back to "/".
 
-//go:embed web/login.html web/login.css web/login.js web/redirect.js web/logo.png web/logo-dark.png
+//go:embed web/login.html web/login.css web/login.js web/redirect.js web/customize.css web/customize.js web/logo.png web/logo-dark.png
 var webFS embed.FS
 
 // uiCSP allows only this service's own script and styles; no inline code and no framing.
@@ -29,10 +29,15 @@ const uiCSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 
 
 const redirectTag = `<script src="/auth-ui/assets/redirect.js"></script>`
 
+// Same-origin assets customise the stock SPA without changing its image or compiled bundles.
+const customizeTag = `<link rel="stylesheet" href="/auth-ui/assets/customize.css"><script defer src="/auth-ui/assets/customize.js"></script>`
+
 func (s *Server) registerUI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth-ui/assets/login.css", s.asset("web/login.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /auth-ui/assets/login.js", s.asset("web/login.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /auth-ui/assets/redirect.js", s.asset("web/redirect.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /auth-ui/assets/customize.css", s.asset("web/customize.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /auth-ui/assets/customize.js", s.asset("web/customize.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /auth-ui/assets/logo.png", s.asset("web/logo.png", "image/png"))
 	mux.HandleFunc("GET /auth-ui/assets/logo-dark.png", s.asset("web/logo-dark.png", "image/png"))
 	mux.HandleFunc("GET /auth-ui/config", s.handleUIConfig)
@@ -221,7 +226,7 @@ func injectRedirect(resp *http.Response) error {
 	if err != nil {
 		return err
 	}
-	out := bytes.Replace(b, []byte("</head>"), []byte(redirectTag+"</head>"), 1)
+	out := bytes.Replace(b, []byte("</head>"), []byte(customizeTag+redirectTag+"</head>"), 1)
 	resp.Body = io.NopCloser(bytes.NewReader(out))
 	resp.ContentLength = int64(len(out))
 	resp.Header.Set("Content-Length", strconv.Itoa(len(out)))

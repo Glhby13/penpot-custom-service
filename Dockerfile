@@ -3,7 +3,7 @@
 # penpot-custom-service: static Go binary on scratch, non-root (uid/gid 65532).
 #   docker build --build-arg SERVICE_NAME=auth-service -t <reg>/penpot-custom-service/auth-service:<tag> .
 # =============================================================================
-ARG GO_IMAGE=golang:1.27.2-alpine
+ARG GO_IMAGE=golang:1.27.4-alpine
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS go-build
 ARG TARGETOS=linux

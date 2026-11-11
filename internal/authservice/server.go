@@ -61,6 +61,7 @@ type Server struct {
 	lim *limiter
 	// proxy forwards "/" to the Penpot frontend for signed-in users (nil = the sign-in page is not served).
 	proxy http.Handler
+	mcp   *mcpGuard
 }
 
 // NewServer wires the server to Keycloak and the Penpot backend.
@@ -100,7 +101,8 @@ func (s *Server) Handler() http.Handler {
 		}
 	}
 	s.registerUI(mux)
-	return mux
+	s.registerMCP(mux)
+	return s.guardMCP(mux)
 }
 
 func writeTransit(w http.ResponseWriter, status int, body []byte) {

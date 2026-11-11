@@ -1,0 +1,13 @@
+/* Author / Agent: Codex. Stock Penpot 2.18.4 selectors, verified against upstream source.
+   Only mark the Unlock Enterprise promotion; preserve renewal warnings, current plan and Password settings.
+   Visibility is presentation only: the gateway separately enforces MCP authorization. */
+.main_ui_dashboard_subscription__nitrate-banner[data-uxstudio-enterprise-promo="true"] {
+  display: none !important;
+}
+
+/* Fail closed before JavaScript runs and while the current session's capability is unknown.
+   These selectors also cover settings mounted later by the SPA, without DOM polling. */
+html:not([data-uxstudio-mcp="allowed"]) [data-testid="settings-integrations"],
+html:not([data-uxstudio-mcp="allowed"]) .main_ui_settings_integrations__integrations {
+  display: none !important;
+}

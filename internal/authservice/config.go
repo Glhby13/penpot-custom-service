@@ -2,6 +2,7 @@ package authservice
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -25,8 +26,14 @@ type Config struct {
 	// local account". Empty = that button is off.
 	LocalAccounts []string
 	// AdminRole is the Keycloak client role for Penpot administrators. Nothing is enforced with it yet; it is
-	// read at sign-in and logged so it can later gate MCP (see README, "Admin-only MCP").
+	// read at sign-in and logged. MCP independently requires MCPAccessRole (no admin bypass).
 	AdminRole string
+	// MCP is opt-in; the dedicated client role is mandatory (administrators have no bypass).
+	MCPEnabled      bool
+	MCPAccessRole   string
+	MCPPublicOrigin string
+	MCPServerURL    string
+	MCPWSURL        string
 	// EmailDomain (e.g. "btn.co.id"): Penpot's form only accepts an e-mail address, so users type user@<domain> and
 	// the part before the @ is what is sent to Keycloak as the AD username (no need for Keycloak "Login with email").
 	// Any other domain is refused. Empty = the typed value is sent to Keycloak unchanged.
@@ -56,11 +63,27 @@ func LoadConfig() (*Config, error) {
 		AccessRole:          env("ACCESS_ROLE", ""),
 		LocalAccounts:       splitList(env("LOCAL_ACCOUNTS", "")),
 		AdminRole:           env("ADMIN_ROLE", "penpot-admin"),
+		MCPEnabled:          strings.EqualFold(env("MCP_ENABLED", "false"), "true"),
+		MCPAccessRole:       env("MCP_ACCESS_ROLE", "mcp-access"),
+		MCPPublicOrigin:     strings.TrimRight(env("MCP_PUBLIC_ORIGIN", ""), "/"),
+		MCPServerURL:        env("MCP_SERVER_URL", ""),
+		MCPWSURL:            env("MCP_WS_URL", ""),
 		EmailDomain:         strings.ToLower(strings.TrimPrefix(env("EMAIL_DOMAIN", ""), "@")),
 		PenpotBackendURL:    strings.TrimRight(env("PENPOT_BACKEND_URL", ""), "/"),
 		PenpotFrontendURL:   strings.TrimRight(env("PENPOT_FRONTEND_URL", ""), "/"),
 		PenpotRPCPath:       "/" + strings.Trim(env("PENPOT_RPC_PATH", "/api/rpc/command"), "/"),
 		ManagedPasswordSeed: env("MANAGED_PASSWORD_SEED", ""),
+	}
+	if c.MCPEnabled && (c.MCPAccessRole == "" || c.MCPPublicOrigin == "") {
+		return nil, errors.New("MCP_ENABLED requires MCP_ACCESS_ROLE and MCP_PUBLIC_ORIGIN")
+	}
+	if c.MCPEnabled {
+		for _, raw := range []string{c.MCPPublicOrigin, c.MCPServerURL, c.MCPWSURL} {
+			u, err := url.Parse(raw)
+			if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				return nil, errors.New("invalid MCP origin/upstream URL")
+			}
+		}
 	}
 	var missing []string
 	for k, v := range map[string]string{

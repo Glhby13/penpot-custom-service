@@ -27,7 +27,7 @@ def MANIFEST_PATH           = env.PENPOT_MANIFEST_PATH     ?: env.PENPOTCS_MANIF
 def MANIFEST_ENV            = env.PENPOT_MANIFEST_ENV      ?: env.PENPOTCS_MANIFEST_ENV      ?: 'dev'
 def MANIFEST_CREDENTIALS_ID = env.PENPOTCS_MANIFEST_CREDENTIALS_ID ?: env.PORTAL_MANIFEST_CREDENTIALS_ID ?: 'github-helm-values-lab'
 
-def GO_IMAGE       = cfg('GO_IMAGE', 'golang:1.27.2-alpine')
+def GO_IMAGE       = cfg('GO_IMAGE', 'golang:1.27.4-alpine')
 def GOLANGCI_IMAGE = cfg('GOLANGCI_IMAGE', 'golangci/golangci-lint:v2.14.0-alpine')
 def KANIKO_IMAGE   = cfg('KANIKO_IMAGE', 'gcr.io/kaniko-project/executor:v1.23.2-debug')
 def GOVULNCHECK_VERSION = cfg('GOVULNCHECK_VERSION', 'v1.9.0')
@@ -89,21 +89,18 @@ pipeline {
       }
     }
 
-    stage('Lint & Test') {
-      parallel {
-        stage('Go lint') {
-          steps { script { runIn(BUILD_MODE, GOLANGCI_IMAGE, 'golangci', 'golangci-lint run ./cmd/... ./internal/...') } }
-        }
-        stage('Go test') {
-          steps { script { runIn(BUILD_MODE, GO_IMAGE, 'golang', 'go vet ./... && go test -count=1 -coverprofile=coverage.out ./...') } }
-        }
-        stage('Go vuln (SCA)') {
-          steps {
-            script {
-              runIn(BUILD_MODE, GO_IMAGE, 'golang',
-                "go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} && \$(go env GOPATH)/bin/govulncheck ./...")
-            }
-          }
+    // Sequential Go gates avoid OOM from compiler/test/vulnerability scans sharing the lab pod.
+    stage('Go lint') {
+      steps { script { runIn(BUILD_MODE, GOLANGCI_IMAGE, 'golangci', 'golangci-lint run ./cmd/... ./internal/...') } }
+    }
+    stage('Go test') {
+      steps { script { runIn(BUILD_MODE, GO_IMAGE, 'golang', 'go vet ./... && go test -count=1 -coverprofile=coverage.out ./...') } }
+    }
+    stage('Go vuln (SCA)') {
+      steps {
+        script {
+          runIn(BUILD_MODE, GO_IMAGE, 'golang',
+            "go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} && \$(go env GOPATH)/bin/govulncheck ./...")
         }
       }
     }
