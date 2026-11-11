@@ -156,8 +156,13 @@
     }).then(function (res) {
       if (res.status === 200) {
         var hash = location.hash;
-        if (!hash || /^#\/auth\//.test(hash)) hash = '#/dashboard';
-        location.replace('/' + hash);
+        if (/^#\/auth\//.test(hash)) hash = '';
+        if (hash) {
+          location.hash = hash;
+        } else if (location.hash) {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+        location.reload();
         return;
       }
       var msg = (res.body && res.body.error_description) ||
