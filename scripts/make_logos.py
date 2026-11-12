@@ -59,8 +59,13 @@ def make_icon():
     icon.paste(scaled_ux, (paste_x, paste_y), scaled_ux)
     icon.save(OUT / "icon.png", optimize=True)
     icon.resize((64, 64), Image.LANCZOS).save(OUT / "favicon.png", optimize=True)
+    target_h = 120
+    target_w = round(ux_tight.width * target_h / ux_tight.height)
+    mark = ux_tight.resize((target_w, target_h), Image.LANCZOS)
+    mark.save(OUT / "mark.png", optimize=True)
     print("icon.png", icon.size, (OUT / "icon.png").stat().st_size // 1024, "KB")
     print("favicon.png", (64, 64), (OUT / "favicon.png").stat().st_size // 1024, "KB")
+    print("mark.png", mark.size, (OUT / "mark.png").stat().st_size // 1024, "KB")
 
 finish(light_px, "logo.png")
 finish(dark_px, "logo-dark.png")

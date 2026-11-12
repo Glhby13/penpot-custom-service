@@ -44,7 +44,7 @@ func TestCustomizationInjectionIsLimitedToStockHTML(t *testing.T) {
 
 func TestCustomizationAssetsAreEmbeddedAndRevalidated(t *testing.T) {
 	s := newTestServer(&fakeKC{}, &fakePenpot{})
-	for _, asset := range []string{"customize.css", "customize.js", "logo.png", "logo-dark.png", "icon.png", "favicon.png"} {
+	for _, asset := range []string{"customize.css", "customize.js", "logo.png", "logo-dark.png", "icon.png", "favicon.png", "mark.png"} {
 		rec := get(s, "/auth-ui/assets/"+asset, "")
 		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
 			t.Fatalf("asset %s unavailable: %d", asset, rec.Code)

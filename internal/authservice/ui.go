@@ -20,7 +20,7 @@ import (
 // request, and "/" for a signed-in user, is proxied to the Penpot frontend untouched, except that a tiny script is
 // added to its start page which sends "#/auth/login" (session expired, logout) back to "/".
 
-//go:embed web/login.html web/login.css web/login.js web/redirect.js web/customize.css web/customize.js web/logo.png web/logo-dark.png web/icon.png web/favicon.png
+//go:embed web/login.html web/login.css web/login.js web/redirect.js web/customize.css web/customize.js web/logo.png web/logo-dark.png web/icon.png web/favicon.png web/mark.png
 var webFS embed.FS
 
 // uiCSP allows only this service's own script and styles; no inline code and no framing.
@@ -42,6 +42,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth-ui/assets/logo-dark.png", s.asset("web/logo-dark.png", "image/png"))
 	mux.HandleFunc("GET /auth-ui/assets/icon.png", s.asset("web/icon.png", "image/png"))
 	mux.HandleFunc("GET /auth-ui/assets/favicon.png", s.asset("web/favicon.png", "image/png"))
+	mux.HandleFunc("GET /auth-ui/assets/mark.png", s.asset("web/mark.png", "image/png"))
 	mux.HandleFunc("GET /favicon.ico", s.asset("web/favicon.png", "image/png"))
 	mux.HandleFunc("GET /images/favicon.png", s.asset("web/favicon.png", "image/png"))
 	mux.HandleFunc("GET /auth-ui/config", s.handleUIConfig)
