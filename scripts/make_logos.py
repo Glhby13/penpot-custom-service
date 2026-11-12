@@ -37,7 +37,32 @@ def finish(px, name):
     img = img.crop((max(box[0] - pad, 0), max(box[1] - pad, 0), min(box[2] + pad, img.width), min(box[3] + pad, img.height)))
     img = img.resize((WIDTH, round(img.height * WIDTH / img.width)), Image.LANCZOS)
     img.save(OUT / name, optimize=True)
-    print(name, img.size, (OUT / name).stat().st_size // 1024, "KB")
+def make_icon():
+    # Crop UX portion (tight bounds around U, X, and the red tip)
+    ux_crop = Image.new("RGBA", src.size)
+    ux_crop.putdata(light_px)
+    ux_cut = ux_crop.crop((186, 177, 925, 498))
+    bbox = ux_cut.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    ux_tight = ux_cut.crop(bbox)
+
+    target_size = 512
+    padding = 48
+    inner_size = target_size - (padding * 2)
+    scale = min(inner_size / ux_tight.width, inner_size / ux_tight.height)
+    new_w = round(ux_tight.width * scale)
+    new_h = round(ux_tight.height * scale)
+    scaled_ux = ux_tight.resize((new_w, new_h), Image.LANCZOS)
+
+    icon = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    paste_x = (target_size - new_w) // 2
+    paste_y = (target_size - new_h) // 2
+    icon.paste(scaled_ux, (paste_x, paste_y), scaled_ux)
+    icon.save(OUT / "icon.png", optimize=True)
+    icon.resize((64, 64), Image.LANCZOS).save(OUT / "favicon.png", optimize=True)
+    print("icon.png", icon.size, (OUT / "icon.png").stat().st_size // 1024, "KB")
+    print("favicon.png", (64, 64), (OUT / "favicon.png").stat().st_size // 1024, "KB")
 
 finish(light_px, "logo.png")
 finish(dark_px, "logo-dark.png")
+make_icon()
+

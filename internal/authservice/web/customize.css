@@ -5,6 +5,17 @@
   display: none !important;
 }
 
+/* Hide subscription sidebar bottom card for all users */
+.main_ui_dashboard_subscription__nitrate-current-plan {
+  display: none !important;
+}
+
+/* Hide subscription menu item and section in settings for all users */
+[data-testid="settings-subscription"],
+.main_ui_settings_subscription__dashboard-section {
+  display: none !important;
+}
+
 /* Fail closed before JavaScript runs and while the current session's capability is unknown.
    These selectors also cover settings mounted later by the SPA, without DOM polling. */
 html:not([data-uxstudio-mcp="allowed"]) [data-testid="settings-integrations"],
@@ -20,6 +31,19 @@ html[data-uxstudio-login-route="true"] body { visibility: hidden !important; }
 .main_ui_dashboard_sidebar__create-organization,
 [data-uxstudio-org-create="true"] {
   display: none !important;
+}
+
+/* Organization branding: replace Penpot SVG icon with UX mark */
+.main_ui_dashboard_sidebar__organization-penpot-icon svg {
+  display: none !important;
+}
+.main_ui_dashboard_sidebar__organization-penpot-icon {
+  display: inline-block !important;
+  width: 24px !important;
+  height: 24px !important;
+  background: url('/auth-ui/assets/icon.png') no-repeat center center / contain !important;
+  vertical-align: middle !important;
+  margin-right: 6px !important;
 }
 
 /* Invite members autocomplete */

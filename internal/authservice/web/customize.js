@@ -87,7 +87,15 @@
     return /^#\/settings\/integrations(?:[/?]|$)/.test(location.hash);
   }
 
+  function subscriptionsRoute() {
+    return /^#\/settings\/subscriptions?(?:[/?]|$)/.test(location.hash);
+  }
+
   function guardRoute() {
+    if (subscriptionsRoute()) {
+      location.replace('#/settings/profile');
+      return;
+    }
     if (status === 'denied' && integrationsRoute()) {
       location.replace('#/settings/profile');
     }
@@ -340,18 +348,58 @@
     if (ac && event.target === ac.input) setTimeout(function () { if (ac && document.activeElement !== ac.input) acClose(); }, 120);
   }
 
+  function updateSidebarBrand() {
+    if (!document || typeof document.querySelector !== 'function') return;
+    var org = document.querySelector('.main_ui_dashboard_sidebar__selected-organization');
+    if (!org) return;
+    for (var i = 0; i < org.childNodes.length; i++) {
+      var n = org.childNodes[i];
+      if (n.nodeType === 3 && n.textContent && n.textContent.trim() === 'Penpot') {
+        n.textContent = 'Studio';
+      }
+    }
+  }
+
+  function updateFavicon() {
+    if (!document || typeof document.querySelectorAll !== 'function') return;
+    var links = document.querySelectorAll('link[rel*="icon"]');
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].href && links[i].href.indexOf('/auth-ui/assets/icon.png') === -1 && links[i].href.indexOf('/auth-ui/assets/favicon.png') === -1) {
+        links[i].href = '/auth-ui/assets/icon.png';
+      }
+    }
+    if (!links.length && document.head && typeof document.createElement === 'function') {
+      var link = document.createElement('link');
+      link.rel = 'icon';
+      link.href = '/auth-ui/assets/icon.png';
+      document.head.appendChild(link);
+    }
+  }
+
+  function updateTitle() {
+    if (document && typeof document.title === 'string' && document.title.indexOf('Penpot') !== -1) {
+      document.title = document.title.replace(/Penpot/g, 'UX Studio');
+    }
+  }
+
   window.__uxstudioCustomize = {
     isOrgTrigger: createOrgTrigger, currentToken: currentToken, replaceLastToken: replaceLastToken, normalizeUsers: normalizeUsers,
-    createSuggester: createSuggester
+    createSuggester: createSuggester, updateSidebarBrand: updateSidebarBrand, updateTitle: updateTitle
   };
 
   setStatus('pending');
   hideEnterprisePromotion();
+  updateSidebarBrand();
+  updateFavicon();
+  updateTitle();
   // The SPA mounts the dashboard after this script. Watch content only, not our own attribute changes.
   new MutationObserver(function () {
     hideEnterprisePromotion();
     markOrgItems();
     checkInviteDetached();
+    updateSidebarBrand();
+    updateFavicon();
+    updateTitle();
   }).observe(root, {
     childList: true, subtree: true, characterData: true
   });

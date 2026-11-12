@@ -209,3 +209,30 @@ test('suggester: stale responses are aborted and ignored; errors yield an empty 
   s.input('yy'); s.cancel(); assert.equal(t.pending(), 0);
   assert.notDeepEqual(J(results[results.length - 1]), [{ email: 'late@x.id' }]);
 });
+
+test('subscriptions route is blocked for all users and redirects to profile', async () => {
+  for (const route of ['#/settings/subscriptions', '#/settings/subscriptions?tab=plans', '#/settings/subscription']) {
+    const h = await harness([{ mcp: true }], route);
+    assert.deepEqual(h.replacements, ['#/settings/profile']);
+  }
+});
+
+test('updateSidebarBrand changes Penpot text node to Studio', async () => {
+  const h = await harness([{}]);
+  const { updateSidebarBrand } = h.context.window.__uxstudioCustomize;
+  const textNode = { nodeType: 3, textContent: ' Penpot ' };
+  const spanNode = { nodeType: 1, tagName: 'SPAN', textContent: '' };
+  const mockOrg = { childNodes: [spanNode, textNode] };
+  h.context.document.querySelector = (sel) => sel.indexOf('selected-organization') >= 0 ? mockOrg : null;
+  updateSidebarBrand();
+  assert.equal(textNode.textContent, 'Studio');
+});
+
+test('updateTitle replaces Penpot with UX Studio', async () => {
+  const h = await harness([{}]);
+  const { updateTitle } = h.context.window.__uxstudioCustomize;
+  h.context.document.title = 'Projects - Personal Projects - Penpot';
+  updateTitle();
+  assert.equal(h.context.document.title, 'Projects - Personal Projects - UX Studio');
+});
+

@@ -44,13 +44,19 @@ func TestCustomizationInjectionIsLimitedToStockHTML(t *testing.T) {
 
 func TestCustomizationAssetsAreEmbeddedAndRevalidated(t *testing.T) {
 	s := newTestServer(&fakeKC{}, &fakePenpot{})
-	for _, asset := range []string{"customize.css", "customize.js"} {
+	for _, asset := range []string{"customize.css", "customize.js", "logo.png", "logo-dark.png", "icon.png", "favicon.png"} {
 		rec := get(s, "/auth-ui/assets/"+asset, "")
 		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
 			t.Fatalf("asset %s unavailable: %d", asset, rec.Code)
 		}
 		if rec.Header().Get("Cache-Control") != "no-cache" || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
 			t.Fatalf("asset %s has incorrect caching/type guards", asset)
+		}
+	}
+	for _, favRoute := range []string{"/favicon.ico", "/images/favicon.png"} {
+		rec := get(s, favRoute, "")
+		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
+			t.Fatalf("route %s unavailable: %d", favRoute, rec.Code)
 		}
 	}
 }
