@@ -20,4 +20,16 @@
   }
   check();
   window.addEventListener('hashchange', check);
+  window.addEventListener('popstate', check);
+  // Penpot's router changes the route with history.pushState/replaceState, which fire no event: hook both, and keep
+  // a cheap poll as a safety net.
+  ['pushState', 'replaceState'].forEach(function (name) {
+    var orig = history[name];
+    history[name] = function () {
+      var out = orig.apply(this, arguments);
+      check();
+      return out;
+    };
+  });
+  setInterval(check, 500);
 })();
