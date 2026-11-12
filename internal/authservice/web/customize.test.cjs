@@ -124,18 +124,9 @@ test('only scoped Unlock Enterprise promotion is hidden; renewal warning stays v
 
 const J = (x) => JSON.parse(JSON.stringify(x)); // vm contexts have their own Array realm
 
-// ---- Create organization gating ----
-test('org capability: only strict org:true allows; everything else fails closed', async () => {
-  for (const [cap, want] of [[{ mcp: true, org: true }, 'allowed'], [{ org: 'true' }, 'denied'], [{ org: 1 }, 'denied'], [{ mcp: true }, 'denied'], [{ org: false }, 'denied']]) {
-    const h = await harness([cap]);
-    assert.equal(h.attrs['data-uxstudio-org'], want);
-  }
-  assert.equal((await harness([new Error('down')])).attrs['data-uxstudio-org'], 'denied');
-  assert.equal((await harness([() => new Promise(() => {})])).attrs['data-uxstudio-org'], 'pending');
-});
-
-test('upsell click is swallowed for non-admins and never reaches Penpot', async () => {
-  const h = await harness([{ mcp: false, org: false }]);
+// ---- "Create org" is hidden for everybody ----
+test('upsell click is swallowed for everybody and never reaches Penpot', async () => {
+  const h = await harness([{ mcp: false }]);
   const calls = [];
   const target = { closest(sel) { return sel.indexOf('create-organization') >= 0 ? { focus() {} } : null; } };
   h.listeners.click({ target, preventDefault() { calls.push('pd'); }, stopPropagation() { calls.push('sp'); }, stopImmediatePropagation() { calls.push('sip'); } });
@@ -147,29 +138,10 @@ test('upsell click is swallowed for non-admins and never reaches Penpot', async 
 });
 
 test('dropdown entry matches only the exact "Create org" label', async () => {
-  const h = await harness([{ org: false }]);
+  const h = await harness([{}]);
   const mk = (text) => ({ target: { closest(sel) { return sel.indexOf('organization-dropdown-item') >= 0 && sel.indexOf('create-organization') < 0 ? { textContent: ' ' + text + ' ' } : null; } }, preventDefault() { this.hit = true; }, stopPropagation() {}, stopImmediatePropagation() {} });
   const a = mk('Create org'); h.listeners.click(a); assert.equal(a.hit, true);
   const b = mk('Acme org'); h.listeners.click(b); assert.equal(b.hit, undefined);
-});
-
-test('org name and team URL validation', async () => {
-  const { validOrgName, teamURL, orgErrorMessage } = (await harness([{}])).context.window.__uxstudioCustomize;
-  assert.equal(validOrgName('A'), true);
-  assert.equal(validOrgName('  Acme  '), true);
-  assert.equal(validOrgName('   '), false);
-  assert.equal(validOrgName(''), false);
-  assert.equal(validOrgName('x'.repeat(64)), true);
-  assert.equal(validOrgName('x'.repeat(65)), false);
-  assert.equal(validOrgName('bad\u0007name'), false);
-  assert.equal(validOrgName(null), false);
-  const id = '123e4567-e89b-12d3-a456-426614174000';
-  assert.equal(teamURL(id), '#/dashboard/recent?team-id=' + id);
-  assert.equal(teamURL('x/../y'), '');
-  assert.equal(teamURL(undefined), '');
-  assert.equal(orgErrorMessage(403), 'Only administrators can create organizations');
-  assert.equal(orgErrorMessage(429), 'Too many requests');
-  assert.equal(orgErrorMessage(500), 'Could not create the organization. Please try again.');
 });
 
 // ---- Invite autocomplete ----

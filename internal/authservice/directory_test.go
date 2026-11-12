@@ -86,7 +86,7 @@ func newOrgEnv(t *testing.T, domain string) *orgEnv {
 		}
 	}))
 	t.Cleanup(up.Close)
-	cfg := &Config{MCPPublicOrigin: "https://uxstudio.lab.local", PenpotFrontendURL: up.URL, PenpotBackendURL: up.URL, PenpotRPCPath: "/api/rpc/command", ManagedPasswordSeed: strings.Repeat("x", 32), AdminRole: "penpot-admin", EmailDomain: domain}
+	cfg := &Config{MCPPublicOrigin: "https://uxstudio.lab.local", PenpotFrontendURL: up.URL, PenpotBackendURL: up.URL, PenpotRPCPath: "/api/rpc/command", ManagedPasswordSeed: strings.Repeat("x", 32), EmailDomain: domain}
 	e.roles = &fakeOrgRoles{roles: map[string]bool{"penpot-admin": true}}
 	e.s = NewServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	e.s.mcp = &mcpGuard{cfg: cfg, pp: NewPenpot(up.URL, cfg.PenpotRPCPath, cfg.ManagedPasswordSeed), roles: e.roles, allowed: map[string]cachedMCP{}, sessions: map[string]cachedMCP{"ada@lab.local": {time.Now().Add(time.Hour), "auth-token=managed"}}, slots: make(chan struct{}, 16)}
@@ -96,8 +96,7 @@ func newOrgEnv(t *testing.T, domain string) *orgEnv {
 
 type reqOpt func(*http.Request)
 
-func withHeader(k, v string) reqOpt { return func(r *http.Request) { r.Header.Set(k, v) } }
-func noCookie() reqOpt              { return func(r *http.Request) { r.Header.Del("Cookie") } }
+func noCookie() reqOpt { return func(r *http.Request) { r.Header.Del("Cookie") } }
 
 func (e *orgEnv) do(method, target, body string, opts ...reqOpt) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, target, strings.NewReader(body))
@@ -113,166 +112,11 @@ func (e *orgEnv) do(method, target, body string, opts ...reqOpt) *httptest.Respo
 	return w
 }
 
-func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
-	t.Helper()
-	var m map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
-		t.Fatalf("not JSON: %q", w.Body.String())
-	}
-	return m
-}
-
-func TestCapabilitiesOrg(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		admin  bool
-		err    error
-		cookie bool
-		org    bool
-	}{
-		{"admin", true, nil, true, true},
-		{"not admin", false, nil, true, false},
-		{"keycloak down fails closed", true, errors.New("down"), true, false},
-		{"no session", true, nil, false, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			e := newOrgEnv(t, "")
-			e.roles.set("penpot-admin", tc.admin)
-			e.roles.err = tc.err
-			var opts []reqOpt
-			if !tc.cookie {
-				opts = append(opts, noCookie())
-			}
-			w := e.do("GET", "/auth-ui/capabilities", "", opts...)
-			m := decode(t, w)
-			if w.Code != 200 || m["org"] != tc.org || m["mcp"] != false {
-				t.Fatalf("got %d %v", w.Code, m)
-			}
-			if w.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "default-src 'none'") {
-				t.Fatal("missing hardening headers")
-			}
-		})
-	}
-}
-
-func TestCapabilitiesAnonymousSessionIsNotAdmin(t *testing.T) {
-	e := newOrgEnv(t, "")
-	e.profile.Store(`{"id":"00000000-0000-0000-0000-000000000000","email":"ada@lab.local"}`)
-	if m := decode(t, e.do("GET", "/auth-ui/capabilities", "")); m["org"] != false {
-		t.Fatalf("anonymous session got org: %v", m)
-	}
-}
-
-func TestCreateOrgSuccessUsesUserCookie(t *testing.T) {
-	e := newOrgEnv(t, "")
-	w := e.do("POST", "/auth-ui/orgs", `{"name":"  Design Team  "}`, withHeader("Origin", "https://uxstudio.lab.local"), withHeader("Sec-Fetch-Site", "same-origin"))
-	m := decode(t, w)
-	if w.Code != 201 || m["id"] != "team-1" || m["name"] != "Design Team" || len(m) != 2 {
-		t.Fatalf("got %d %v", w.Code, m)
-	}
-	if e.teamCook.Load() != "auth-token=browser" {
-		t.Fatalf("create-team did not use the caller's own cookie: %v", e.teamCook.Load())
-	}
-	if e.teamBody.Load() != `{"name":"Design Team"}` {
-		t.Fatalf("body %v", e.teamBody.Load())
-	}
-}
-
-func TestCreateOrgAbuse(t *testing.T) {
-	long := strings.Repeat("a", 65)
-	for _, tc := range []struct {
-		name   string
-		body   string
-		opts   []reqOpt
-		admin  bool
-		kcErr  error
-		want   int
-		teamOK bool // upstream must have been called
-	}{
-		{"no session", `{"name":"x"}`, []reqOpt{noCookie()}, true, nil, 401, false},
-		{"not admin", `{"name":"x"}`, nil, false, nil, 403, false},
-		{"keycloak down", `{"name":"x"}`, nil, true, errors.New("down"), 503, false},
-		{"cross-site fetch metadata", `{"name":"x"}`, []reqOpt{withHeader("Sec-Fetch-Site", "cross-site")}, true, nil, 403, false},
-		{"same-site subdomain", `{"name":"x"}`, []reqOpt{withHeader("Sec-Fetch-Site", "same-site")}, true, nil, 403, false},
-		{"foreign origin", `{"name":"x"}`, []reqOpt{withHeader("Origin", "https://evil.example")}, true, nil, 403, false},
-		{"null origin", `{"name":"x"}`, []reqOpt{withHeader("Origin", "null")}, true, nil, 403, false},
-		{"form content type", `{"name":"x"}`, []reqOpt{withHeader("Content-Type", "application/x-www-form-urlencoded")}, true, nil, 415, false},
-		{"text/plain", `{"name":"x"}`, []reqOpt{withHeader("Content-Type", "text/plain")}, true, nil, 415, false},
-		{"empty name", `{"name":""}`, nil, true, nil, 400, false},
-		{"blank name", `{"name":"   "}`, nil, true, nil, 400, false},
-		{"missing name", `{}`, nil, true, nil, 400, false},
-		{"too long", `{"name":"` + long + `"}`, nil, true, nil, 400, false},
-		{"control char", `{"name":"a\u0000b"}`, nil, true, nil, 400, false},
-		{"newline", `{"name":"a\nb"}`, nil, true, nil, 400, false},
-		{"zero width", "{\"name\":\"a\u200bb\"}", nil, true, nil, 400, false},
-		{"line separator", `{"name":"a b"}`, nil, true, nil, 400, false},
-		{"not json", `name=x`, nil, true, nil, 400, false},
-		{"name not string", `{"name":123}`, nil, true, nil, 400, false},
-		{"body over 4 KB", `{"name":"x","pad":"` + strings.Repeat("p", 5000) + `"}`, nil, true, nil, 400, false},
-		{"64 chars ok", `{"name":"` + strings.Repeat("é", 64) + `"}`, nil, true, nil, 201, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			e := newOrgEnv(t, "")
-			e.roles.set("penpot-admin", tc.admin)
-			e.roles.err = tc.kcErr
-			w := e.do("POST", "/auth-ui/orgs", tc.body, tc.opts...)
-			if w.Code != tc.want {
-				t.Fatalf("got %d %s want %d", w.Code, w.Body.String(), tc.want)
-			}
-			if (e.teamHits.Load() > 0) != tc.teamOK {
-				t.Fatalf("upstream create-team calls = %d", e.teamHits.Load())
-			}
-		})
-	}
-}
-
-func TestCreateOrgRoleRevokedBetweenRequests(t *testing.T) {
-	e := newOrgEnv(t, "")
-	if w := e.do("GET", "/auth-ui/capabilities", ""); decode(t, w)["org"] != true {
-		t.Fatal("expected admin")
-	}
-	e.roles.set("penpot-admin", false) // revoked right after a positive (cached) capability answer
-	if w := e.do("POST", "/auth-ui/orgs", `{"name":"x"}`); w.Code != 403 || e.teamHits.Load() != 0 {
-		t.Fatalf("revoked admin created an org: %d", w.Code)
-	}
-}
-
-func TestCreateOrgPenpotAnswersDoNotLeak(t *testing.T) {
-	for code, want := range map[int]int{400: 400, 403: 401, 401: 401, 429: 429, 500: 502, 502: 502} {
-		t.Run(fmt.Sprint(code), func(t *testing.T) {
-			e := newOrgEnv(t, "")
-			e.teamCode.Store(int32(code))
-			w := e.do("POST", "/auth-ui/orgs", `{"name":"x"}`)
-			if w.Code != want || strings.Contains(w.Body.String(), "secret-internal-detail") {
-				t.Fatalf("got %d %s", w.Code, w.Body.String())
-			}
-		})
-	}
-}
-
-func TestCreateOrgRateLimitPerUser(t *testing.T) {
-	e := newOrgEnv(t, "")
-	for i := 0; i < orgRatePerMin; i++ {
-		if w := e.do("POST", "/auth-ui/orgs", `{"name":"x"}`); w.Code != 201 {
-			t.Fatalf("request %d: %d", i, w.Code)
-		}
-	}
-	if w := e.do("POST", "/auth-ui/orgs", `{"name":"x"}`); w.Code != 429 || w.Header().Get("Retry-After") == "" {
-		t.Fatalf("11th request: %d", w.Code)
-	}
-}
-
-func TestCreateOrgWrongMethod(t *testing.T) {
-	e := newOrgEnv(t, "")
-	if w := e.do("GET", "/auth-ui/orgs", ""); w.Code == 200 || w.Code == 201 {
-		t.Fatalf("GET allowed: %d", w.Code)
-	}
-}
-
+// rows builds n enabled users of domain btn.co.id.
 func rows(n int) []directoryRow {
-	out := make([]directoryRow, n)
-	for i := range out {
-		out[i] = directoryRow{Username: fmt.Sprintf("user%d", i), FirstName: "User", LastName: fmt.Sprint(i), Email: fmt.Sprintf("user%d@btn.co.id", i), Enabled: true}
+	out := make([]directoryRow, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, directoryRow{Username: fmt.Sprintf("user%d", i), Email: fmt.Sprintf("user%d@btn.co.id", i), Enabled: true})
 	}
 	return out
 }
@@ -436,28 +280,14 @@ func TestRoleReaderSearchUsersFailsClosed(t *testing.T) {
 	}
 }
 
-// The native Penpot RPC must not be a way around the administrator rule.
-func TestDirectTeamCreateRPCNeedsAdmin(t *testing.T) {
+// Team creation is Penpot's own and open to every signed-in user: the guard must not block it.
+func TestTeamCreateRPCIsNotRestricted(t *testing.T) {
 	for _, prefix := range rpcPrefixes {
-		for cmd := range orgCommands {
-			e := newOrgEnv(t, "")
-			e.roles.set("penpot-admin", false)
-			if w := e.do(http.MethodPost, prefix+cmd, `{"name":"x"}`); w.Code != 403 || e.teamHits.Load() != 0 {
-				t.Fatalf("%s%s as non-admin: code %d, upstream hits %d", prefix, cmd, w.Code, e.teamHits.Load())
-			}
-			e.roles.set("penpot-admin", true)
-			e.roles.err = errors.New("keycloak down")
-			if w := e.do(http.MethodPost, prefix+cmd, `{"name":"x"}`); w.Code != 403 || e.teamHits.Load() != 0 {
-				t.Fatalf("%s%s with identity error must fail closed: code %d", prefix, cmd, w.Code)
-			}
+		e := newOrgEnv(t, "")
+		e.roles.set("penpot-admin", false)
+		if w := e.do(http.MethodPost, prefix+"create-team", `{"name":"x"}`); w.Code != 200 || e.teamHits.Load() != 1 {
+			t.Fatalf("%screate-team as an ordinary user: code %d, upstream hits %d", prefix, w.Code, e.teamHits.Load())
 		}
-	}
-	e := newOrgEnv(t, "")
-	if w := e.do(http.MethodPost, "/api/rpc/command/create-team", `{"name":"x"}`, noCookie()); w.Code != 403 || e.teamHits.Load() != 0 {
-		t.Fatalf("no session must be refused, got %d", w.Code)
-	}
-	if w := e.do(http.MethodPost, "/api/rpc/command/create-team", `{"name":"x"}`); w.Code != 200 || e.teamHits.Load() != 1 {
-		t.Fatalf("admin must reach penpot: code %d hits %d", w.Code, e.teamHits.Load())
 	}
 }
 

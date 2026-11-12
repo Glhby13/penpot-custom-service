@@ -53,8 +53,16 @@ func (s *Server) registerMCP(mux *http.ServeMux) {
 			s.mcp.roles = &roleReader{kc: kc}
 		}
 	}
-	mux.HandleFunc("GET /auth-ui/capabilities", s.handleCapabilities)
-	s.registerOrg(mux)
+	mux.HandleFunc("GET /auth-ui/capabilities", func(w http.ResponseWriter, r *http.Request) {
+		if !s.mcp.admit(clientIP(r)) {
+			writeJSON(w, 429, map[string]any{"mcp": false})
+			return
+		}
+		email, err := s.mcp.profile(r.Context(), r.Header.Get("Cookie"))
+		allowed := err == nil && s.mcp.allowedEmail(r.Context(), email) == nil
+		writeJSON(w, 200, map[string]any{"mcp": allowed})
+	})
+	s.registerDirectory(mux)
 }
 func (g *mcpGuard) admit(ip string) bool {
 	g.mu.Lock()
@@ -307,27 +315,6 @@ func (g *mcpGuard) originOK(r *http.Request) bool {
 
 var mcpCommands = map[string]bool{"create-access-token": true, "get-access-tokens": true, "get-current-mcp-token": true, "delete-access-token": true}
 
-// orgCommands create teams ("organizations"). Penpot's own RPC is reachable with any session cookie, so the
-// administrator rule is enforced here too, not only on /auth-ui/orgs.
-var orgCommands = map[string]bool{"create-team": true, "create-team-with-invitations": true, "create-team-in-organization": true}
-
-func (s *Server) guardTeamCreate(w http.ResponseWriter, r *http.Request, next http.Handler) {
-	deny := func() {
-		writeTransit(w, 403, transitError("restriction", "org-not-permitted", "Only administrators can create organizations."))
-	}
-	if s.mcp == nil || !s.mcp.admit(clientIP(r)) {
-		deny()
-		return
-	}
-	email, err := s.mcp.identity(r.Context(), r.Header.Get("Cookie"))
-	if err != nil || !s.isOrgAdmin(r.Context(), email, false) {
-		s.log.Warn("team creation refused: administrator role required", "user", email, "path", r.URL.Path)
-		deny()
-		return
-	}
-	next.ServeHTTP(w, r)
-}
-
 func (s *Server) guardMCP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -348,10 +335,6 @@ func (s *Server) guardMCP(next http.Handler) http.Handler {
 				cmd := strings.TrimPrefix(p, prefix)
 				if cmd == "request-email-change" {
 					s.denyMCP(w)
-					return
-				}
-				if orgCommands[cmd] {
-					s.guardTeamCreate(w, r, next)
 					return
 				}
 				if mcpCommands[cmd] {

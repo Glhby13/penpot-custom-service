@@ -1,12 +1,11 @@
 // Author / Agent: Codex. UI capabilities are server-derived, never inferred from local storage or user input.
-// This script is presentation only; the gateway independently protects token RPCs, MCP transports, org creation
-// and the user directory. Author / Agent (org create dialog, invite autocomplete): Claude Code.
+// This script is presentation only; the gateway independently protects token RPCs, MCP transports and the user
+// directory. Author / Agent (invite autocomplete, hidden "Create org"): Claude Code.
 // Server data is only ever written with textContent / attributes, never parsed as HTML.
 (function () {
   'use strict';
   var root = document.documentElement;
   var status = 'pending';
-  var orgStatus = 'pending';
   var refreshing = false;
 
   // ---- Pure helpers (also exported for the node tests) ----
@@ -14,28 +13,6 @@
   var ORG_TRIGGER_ITEM = '.main_ui_dashboard_sidebar__organization-dropdown-item.main_ui_dashboard_sidebar__action';
   var ORG_ITEM_TEXT = 'Create org';
   var INVITE_PLACEHOLDER = /^Emails, comma separated/i;
-  var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-  function orgAllowed(capability) {
-    return !!capability && capability.org === true;
-  }
-
-  function validOrgName(raw) {
-    if (typeof raw !== 'string') return false;
-    var name = raw.trim();
-    // eslint-disable-next-line no-control-regex
-    return name.length >= 1 && Array.from(name).length <= 64 && !/[\u0000-\u001f\u007f]/.test(name);
-  }
-
-  function teamURL(id) {
-    return typeof id === 'string' && UUID_RE.test(id) ? '#/dashboard/recent?team-id=' + id : '';
-  }
-
-  function orgErrorMessage(status) {
-    if (status === 403) return 'Only administrators can create organizations';
-    if (status === 429) return 'Too many requests';
-    return 'Could not create the organization. Please try again.';
-  }
 
   // The invite field only ever holds the token being typed (confirmed entries become chips), but be safe with commas.
   function currentToken(value) {
@@ -116,11 +93,6 @@
     }
   }
 
-  function setOrgStatus(next) {
-    orgStatus = next;
-    root.setAttribute('data-uxstudio-org', next);
-  }
-
   function setStatus(next) {
     status = next;
     root.setAttribute('data-uxstudio-mcp', next);
@@ -142,10 +114,8 @@
       });
       if (!response.ok) throw new Error('capability unavailable');
       var capability = await response.json();
-      setOrgStatus(orgAllowed(capability) ? 'allowed' : 'denied');
       setStatus(capability.mcp === true ? 'allowed' : 'denied');
     } catch (_) {
-      setOrgStatus('denied');
       setStatus('denied');
     } finally {
       clearTimeout(timeout);
@@ -153,7 +123,7 @@
     }
   }
 
-  // ---- Create organization (admins only; stock button opens an Enterprise upsell) ----
+  // ---- "Create org": Penpot OSS has no organizations, the stock button only opens an Enterprise upsell ----
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -170,123 +140,12 @@
   }
 
   // The dropdown entry has no stable marker; tag it by its exact English label so CSS can fail closed.
-  // If the label differs (other language, upstream change) it stays visible but the capture handler below
-  // still keeps the upsell from opening for non-admins only where it matched; nothing is ever enabled by this.
+  // If the label differs (other language, upstream change) it stays visible; the capture handler below still keeps
+  // the upsell from opening wherever the trigger matched.
   function markOrgItems() {
     document.querySelectorAll(ORG_TRIGGER_ITEM).forEach(function (item) {
       if (item.textContent.trim() === ORG_ITEM_TEXT) item.setAttribute('data-uxstudio-org-create', 'true');
     });
-  }
-
-  var orgDialog = null;
-
-  function closeOrgDialog() {
-    if (!orgDialog) return;
-    var d = orgDialog;
-    orgDialog = null;
-    document.removeEventListener('keydown', d.onKey, true);
-    d.overlay.remove();
-    if (d.opener && d.opener.isConnected && d.opener.focus) d.opener.focus();
-  }
-
-  function openOrgDialog(opener) {
-    if (orgDialog) return;
-    var overlay = el('div', 'uxs-overlay');
-    var dialog = el('div', 'uxs-dialog');
-    dialog.setAttribute('role', 'dialog');
-    dialog.setAttribute('aria-modal', 'true');
-    dialog.setAttribute('aria-labelledby', 'uxs-org-title');
-    var title = el('h2', 'uxs-title', 'Create organization');
-    title.id = 'uxs-org-title';
-    var form = el('form', 'uxs-form');
-    form.noValidate = true;
-    var label = el('label', 'uxs-label', 'Organization name');
-    label.setAttribute('for', 'uxs-org-name');
-    var input = el('input', 'uxs-input');
-    input.id = 'uxs-org-name';
-    input.type = 'text';
-    input.maxLength = 64;
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.setAttribute('aria-describedby', 'uxs-org-error');
-    var error = el('p', 'uxs-error');
-    error.id = 'uxs-org-error';
-    error.setAttribute('role', 'alert');
-    error.hidden = true;
-    var actions = el('div', 'uxs-actions');
-    var cancel = el('button', 'uxs-btn uxs-btn-secondary', 'Cancel');
-    cancel.type = 'button';
-    var submit = el('button', 'uxs-btn uxs-btn-primary', 'Create');
-    submit.type = 'submit';
-    submit.disabled = true;
-    actions.append(cancel, submit);
-    form.append(label, input, error, actions);
-    dialog.append(title, form);
-    overlay.append(dialog);
-
-    var busy = false;
-    function showError(msg) { error.textContent = msg; error.hidden = !msg; }
-    function sync() { submit.disabled = busy || !validOrgName(input.value); }
-    function close() { if (!busy) closeOrgDialog(); }
-
-    function onKey(event) {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        event.preventDefault();
-        close();
-      } else if (event.key === 'Tab') {
-        var f = Array.prototype.filter.call(dialog.querySelectorAll('input,button'), function (n) { return !n.disabled; });
-        if (!f.length) return;
-        var first = f[0], last = f[f.length - 1];
-        if (!dialog.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
-        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    }
-
-    input.addEventListener('input', function () { showError(''); sync(); });
-    cancel.addEventListener('click', close);
-    overlay.addEventListener('mousedown', function (event) { if (event.target === overlay) close(); });
-    form.addEventListener('submit', async function (event) {
-      event.preventDefault();
-      if (busy || !validOrgName(input.value)) return;
-      busy = true; sync(); showError('');
-      submit.textContent = 'Creating\u2026';
-      try {
-        var response = await fetch('/auth-ui/orgs', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ name: input.value.trim() })
-        });
-        if (response.status === 201) {
-          var created = null;
-          try { created = await response.json(); } catch (_) { created = null; }
-          var target = teamURL(created && created.id);
-          if (target) {
-            busy = false;
-            closeOrgDialog();
-            location.hash = target;
-            location.reload();
-            return;
-          }
-          showError(orgErrorMessage(0));
-        } else {
-          showError(orgErrorMessage(response.status));
-        }
-      } catch (_) {
-        showError(orgErrorMessage(0));
-      }
-      busy = false;
-      submit.textContent = 'Create';
-      sync();
-      input.focus();
-    });
-
-    orgDialog = { overlay: overlay, onKey: onKey, opener: opener };
-    document.addEventListener('keydown', onKey, true);
-    document.body.appendChild(overlay);
-    input.focus();
   }
 
   // Capture phase on document runs before Penpot's own handlers, so the Enterprise upsell never opens.
@@ -296,7 +155,6 @@
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    if (orgStatus === 'allowed') openOrgDialog(trigger);
   }
 
   // ---- Invite members: e-mail autocomplete from the directory ----
@@ -483,13 +341,11 @@
   }
 
   window.__uxstudioCustomize = {
-    orgAllowed: orgAllowed, validOrgName: validOrgName, teamURL: teamURL, orgErrorMessage: orgErrorMessage,
-    currentToken: currentToken, replaceLastToken: replaceLastToken, normalizeUsers: normalizeUsers,
+    isOrgTrigger: createOrgTrigger, currentToken: currentToken, replaceLastToken: replaceLastToken, normalizeUsers: normalizeUsers,
     createSuggester: createSuggester
   };
 
   setStatus('pending');
-  setOrgStatus('pending');
   hideEnterprisePromotion();
   // The SPA mounts the dashboard after this script. Watch content only, not our own attribute changes.
   new MutationObserver(function () {
@@ -512,7 +368,7 @@
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) refresh();
   });
-  // Refresh on the existing page too, so a removed role doesn't leave a stale menu until reload.
+  // Refresh on the existing page too, so a removed MCP role doesn't leave a stale menu until reload.
   setInterval(function () {
     if (!document.hidden) refresh();
   }, 30000);

@@ -15,47 +15,12 @@ html:not([data-uxstudio-mcp="allowed"]) .main_ui_settings_integrations__integrat
 /* Penpot's own login route is never shown (the redirect script sends it to the service's sign-in page). */
 html[data-uxstudio-login-route="true"] body { visibility: hidden !important; }
 
-/* Create organization: stock button opens an Enterprise upsell; only administrators get our own dialog.
-   Fail closed until /auth-ui/capabilities says org:true. The dropdown entry is tagged by customize.js. */
-html:not([data-uxstudio-org="allowed"]) .main_ui_dashboard_sidebar__create-organization,
-html:not([data-uxstudio-org="allowed"]) [data-uxstudio-org-create="true"] {
+/* Penpot OSS has no organizations: the stock "+ Create org" button and the dropdown entry only open an Enterprise
+   upsell, so they are hidden for everybody. The dropdown entry is tagged by customize.js (exact English label). */
+.main_ui_dashboard_sidebar__create-organization,
+[data-uxstudio-org-create="true"] {
   display: none !important;
 }
-
-/* Shared look: Penpot's design tokens follow the SPA theme (dark/light); fallbacks match its dark theme. */
-.uxs-overlay {
-  position: fixed; inset: 0; z-index: 100000; display: grid; place-items: center; padding: 16px;
-  background: rgba(0, 0, 0, .55);
-}
-.uxs-dialog {
-  box-sizing: border-box; width: min(100%, 420px); padding: 24px; border-radius: 8px;
-  background: var(--color-background-secondary, #18181a); color: var(--color-foreground-primary, #fff);
-  border: 1px solid var(--color-background-quaternary, #2e3434);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .4); font-family: inherit; font-size: 14px; line-height: 1.4;
-}
-.uxs-title { margin: 0 0 16px; font-size: 20px; font-weight: 600; color: var(--color-foreground-primary, #fff); }
-.uxs-label { display: block; margin: 0 0 6px; font-size: 12px; color: var(--color-foreground-secondary, #8f9da3); }
-.uxs-input {
-  box-sizing: border-box; width: 100%; height: 40px; padding: 0 12px; border-radius: 8px;
-  border: 1px solid transparent; background: var(--color-background-tertiary, #212426);
-  color: var(--color-foreground-primary, #fff); font: inherit;
-}
-.uxs-input:hover { border-color: var(--color-background-quaternary, #2e3434); }
-.uxs-input:focus-visible { outline: 2px solid var(--color-accent-primary, #7efff5); outline-offset: 0; }
-.uxs-error { margin: 10px 0 0; font-size: 13px; color: var(--color-accent-error, #ff3e82); }
-.uxs-error[hidden] { display: none; }
-.uxs-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.uxs-btn {
-  height: 36px; padding: 0 16px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
-  font: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; font-size: 12px;
-}
-.uxs-btn:focus-visible { outline: 2px solid var(--color-accent-primary, #7efff5); outline-offset: 2px; }
-.uxs-btn-secondary {
-  background: transparent; color: var(--color-foreground-primary, #fff);
-  border-color: var(--color-foreground-secondary, #8f9da3);
-}
-.uxs-btn-primary { background: var(--color-accent-primary, #7efff5); color: var(--color-background-primary, #000); }
-.uxs-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Invite members autocomplete */
 .uxs-ac {
@@ -68,5 +33,3 @@ html:not([data-uxstudio-org="allowed"]) [data-uxstudio-org-create="true"] {
 .uxs-ac-item:hover, .uxs-ac-item[aria-selected="true"] { background: var(--color-background-quaternary, #2e3434); }
 .uxs-ac-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uxs-ac-meta { font-size: 12px; color: var(--color-foreground-secondary, #8f9da3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (prefers-reduced-motion: no-preference) { .uxs-dialog { animation: uxs-pop .14s ease-out; } }
-@keyframes uxs-pop { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }

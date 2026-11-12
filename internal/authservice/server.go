@@ -183,7 +183,7 @@ func (s *Server) authenticate(ctx context.Context, typed, password, ip string) (
 	}
 	s.rememberSession(res, claims.RefreshToken)
 	s.lim.reset("u:" + username)
-	s.log.Info("sign-in ok", "user", penpotEmail, "admin", s.cfg.AdminRole != "" && claims.HasRole(s.cfg.AdminRole))
+	s.log.Info("sign-in ok", "user", penpotEmail)
 	return res, nil
 }
 

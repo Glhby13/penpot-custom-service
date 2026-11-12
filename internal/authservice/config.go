@@ -25,9 +25,6 @@ type Config struct {
 	// LocalAccounts are the e-mail addresses of Penpot's own (local) break-glass accounts that may use "Sign in with
 	// local account". Empty = that button is off.
 	LocalAccounts []string
-	// AdminRole is the Keycloak client role for Penpot administrators. Nothing is enforced with it yet; it is
-	// read at sign-in and logged. MCP independently requires MCPAccessRole (no admin bypass).
-	AdminRole string
 	// MCP is opt-in; the dedicated client role is mandatory (administrators have no bypass).
 	MCPEnabled      bool
 	MCPAccessRole   string
@@ -62,7 +59,6 @@ func LoadConfig() (*Config, error) {
 		KeycloakInsecureTLS: strings.EqualFold(env("KEYCLOAK_INSECURE_TLS", "false"), "true"),
 		AccessRole:          env("ACCESS_ROLE", ""),
 		LocalAccounts:       splitList(env("LOCAL_ACCOUNTS", "")),
-		AdminRole:           env("ADMIN_ROLE", "penpot-admin"),
 		MCPEnabled:          strings.EqualFold(env("MCP_ENABLED", "false"), "true"),
 		MCPAccessRole:       env("MCP_ACCESS_ROLE", "mcp-access"),
 		MCPPublicOrigin:     strings.TrimRight(env("MCP_PUBLIC_ORIGIN", ""), "/"),
