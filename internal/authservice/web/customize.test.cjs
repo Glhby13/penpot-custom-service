@@ -17,7 +17,7 @@ async function harness(responses, hash = '#/dashboard/recent', banners = []) {
     document: {
       hidden: false,
       documentElement: { setAttribute(key, value) { attrs[key] = value; } },
-      querySelectorAll() { return banners; },
+      querySelectorAll(sel) { return String(sel).indexOf('nitrate-banner') >= 0 ? banners : []; },
       addEventListener(name, fn) { listeners[name] = fn; }
     },
     window: { addEventListener(name, fn) { listeners[name] = fn; } },
@@ -38,7 +38,7 @@ async function harness(responses, hash = '#/dashboard/recent', banners = []) {
   vm.runInNewContext(source, context);
   const flush = async () => { await new Promise(setImmediate); };
   await flush();
-  return { attrs, requests, replacements, listeners, location, flush, interval: () => interval() };
+  return { attrs, requests, replacements, listeners, location, flush, context, interval: () => interval() };
 }
 
 test('permitted session shows Integrations and keeps a direct route', async () => {
@@ -120,4 +120,120 @@ test('only scoped Unlock Enterprise promotion is hidden; renewal warning stays v
   promotion.title.textContent = 'Your subscription has expired';
   h.listeners.mutation();
   assert.equal(promotion.attrs['data-uxstudio-enterprise-promo'], undefined);
+});
+
+const J = (x) => JSON.parse(JSON.stringify(x)); // vm contexts have their own Array realm
+
+// ---- Create organization gating ----
+test('org capability: only strict org:true allows; everything else fails closed', async () => {
+  for (const [cap, want] of [[{ mcp: true, org: true }, 'allowed'], [{ org: 'true' }, 'denied'], [{ org: 1 }, 'denied'], [{ mcp: true }, 'denied'], [{ org: false }, 'denied']]) {
+    const h = await harness([cap]);
+    assert.equal(h.attrs['data-uxstudio-org'], want);
+  }
+  assert.equal((await harness([new Error('down')])).attrs['data-uxstudio-org'], 'denied');
+  assert.equal((await harness([() => new Promise(() => {})])).attrs['data-uxstudio-org'], 'pending');
+});
+
+test('upsell click is swallowed for non-admins and never reaches Penpot', async () => {
+  const h = await harness([{ mcp: false, org: false }]);
+  const calls = [];
+  const target = { closest(sel) { return sel.indexOf('create-organization') >= 0 ? { focus() {} } : null; } };
+  h.listeners.click({ target, preventDefault() { calls.push('pd'); }, stopPropagation() { calls.push('sp'); }, stopImmediatePropagation() { calls.push('sip'); } });
+  assert.deepEqual(calls, ['pd', 'sp', 'sip']);
+  // unrelated clicks are untouched
+  const other = [];
+  h.listeners.click({ target: { closest() { return null; } }, preventDefault() { other.push(1); }, stopPropagation() { other.push(1); }, stopImmediatePropagation() { other.push(1); } });
+  assert.deepEqual(other, []);
+});
+
+test('dropdown entry matches only the exact "Create org" label', async () => {
+  const h = await harness([{ org: false }]);
+  const mk = (text) => ({ target: { closest(sel) { return sel.indexOf('organization-dropdown-item') >= 0 && sel.indexOf('create-organization') < 0 ? { textContent: ' ' + text + ' ' } : null; } }, preventDefault() { this.hit = true; }, stopPropagation() {}, stopImmediatePropagation() {} });
+  const a = mk('Create org'); h.listeners.click(a); assert.equal(a.hit, true);
+  const b = mk('Acme org'); h.listeners.click(b); assert.equal(b.hit, undefined);
+});
+
+test('org name and team URL validation', async () => {
+  const { validOrgName, teamURL, orgErrorMessage } = (await harness([{}])).context.window.__uxstudioCustomize;
+  assert.equal(validOrgName('A'), true);
+  assert.equal(validOrgName('  Acme  '), true);
+  assert.equal(validOrgName('   '), false);
+  assert.equal(validOrgName(''), false);
+  assert.equal(validOrgName('x'.repeat(64)), true);
+  assert.equal(validOrgName('x'.repeat(65)), false);
+  assert.equal(validOrgName('bad\u0007name'), false);
+  assert.equal(validOrgName(null), false);
+  const id = '123e4567-e89b-12d3-a456-426614174000';
+  assert.equal(teamURL(id), '#/dashboard/projects?team-id=' + id);
+  assert.equal(teamURL('x/../y'), '');
+  assert.equal(teamURL(undefined), '');
+  assert.equal(orgErrorMessage(403), 'Only administrators can create organizations');
+  assert.equal(orgErrorMessage(429), 'Too many requests');
+  assert.equal(orgErrorMessage(500), 'Could not create the organization. Please try again.');
+});
+
+// ---- Invite autocomplete ----
+test('token extraction and replacement', async () => {
+  const { currentToken, replaceLastToken } = (await harness([{}])).context.window.__uxstudioCustomize;
+  assert.equal(currentToken('ali'), 'ali');
+  assert.equal(currentToken('a@x.id, bo'), 'bo');
+  assert.equal(currentToken('a@x.id,'), '');
+  assert.equal(replaceLastToken('ali', 'ali@x.id'), 'ali@x.id');
+  assert.equal(replaceLastToken('a@x.id, bo', 'bob@x.id'), 'a@x.id, bob@x.id');
+  assert.equal(replaceLastToken('a@x.id,bo', 'bob@x.id'), 'a@x.id,bob@x.id');
+  assert.equal(replaceLastToken('', 'z@x.id'), 'z@x.id');
+});
+
+test('directory response is normalised: max 10, strings only, valid emails', async () => {
+  const { normalizeUsers } = (await harness([{}])).context.window.__uxstudioCustomize;
+  assert.deepEqual(J(normalizeUsers(null)), []);
+  assert.deepEqual(J(normalizeUsers({ users: 'x' })), []);
+  const users = [{ username: 'a', name: 'A', email: 'a@x.id' }, { email: 'bad' }, { email: 5 }, null, { name: 3, username: {}, email: 'b@x.id' }];
+  assert.deepEqual(J(normalizeUsers({ users })), [{ username: 'a', name: 'A', email: 'a@x.id' }, { username: '', name: '', email: 'b@x.id' }]);
+  const many = Array.from({ length: 30 }, (_, i) => ({ email: 'u' + i + '@x.id' }));
+  assert.equal(normalizeUsers({ users: many }).length, 10);
+});
+
+function fakeTimers() {
+  let now = 0, id = 0; const q = new Map();
+  return {
+    setTimer(fn, ms) { q.set(++id, { fn, at: now + ms }); return id; },
+    clearTimer(t) { q.delete(t); },
+    advance(ms) { now += ms; for (const [k, v] of [...q]) if (v.at <= now) { q.delete(k); v.fn(); } },
+    pending: () => q.size
+  };
+}
+
+test('suggester: <2 chars never fetches; debounce collapses keystrokes to one request', async () => {
+  const { createSuggester } = (await harness([{}])).context.window.__uxstudioCustomize;
+  const t = fakeTimers(); const fetched = []; const results = [];
+  const s = createSuggester({ ...t, fetchUsers: (q) => { fetched.push(q); return Promise.resolve([{ email: q + '@x.id' }]); }, onResults: (r) => results.push(r) });
+  s.input('a'); t.advance(1000);
+  assert.deepEqual(fetched, []);
+  assert.deepEqual(J(results), [[]]);
+  s.input('al'); t.advance(100); s.input('ali'); t.advance(100); s.input('alic'); t.advance(249);
+  assert.deepEqual(fetched, []);
+  t.advance(1); await new Promise(setImmediate);
+  assert.deepEqual(fetched, ['alic']);
+  assert.deepEqual(J(results[results.length - 1]), [{ email: 'alic@x.id' }]);
+});
+
+test('suggester: stale responses are aborted and ignored; errors yield an empty list', async () => {
+  const { createSuggester } = (await harness([{}])).context.window.__uxstudioCustomize;
+  const t = fakeTimers(); const pending = []; const results = []; const signals = [];
+  const s = createSuggester({ ...t, fetchUsers: (q, signal) => { signals.push(signal); return new Promise((res, rej) => pending.push({ q, res, rej })); }, onResults: (r) => results.push(r) });
+  s.input('ab'); t.advance(250);
+  s.input('abc'); t.advance(250);
+  assert.equal(signals[0].aborted, true);
+  pending[0].res([{ email: 'old@x.id' }]); await new Promise(setImmediate);
+  assert.deepEqual(results, []);
+  pending[1].res([{ email: 'new@x.id' }]); await new Promise(setImmediate);
+  assert.deepEqual(J(results), [[{ email: 'new@x.id' }]]);
+  s.input('abcd'); t.advance(250);
+  pending[2].rej(new Error('429')); await new Promise(setImmediate);
+  assert.deepEqual(J(results[results.length - 1]), []);
+  // cancel() drops an in-flight result and a pending timer
+  s.input('zz'); t.advance(250); s.cancel(); pending[3].res([{ email: 'late@x.id' }]); await new Promise(setImmediate);
+  s.input('yy'); s.cancel(); assert.equal(t.pending(), 0);
+  assert.notDeepEqual(J(results[results.length - 1]), [{ email: 'late@x.id' }]);
 });

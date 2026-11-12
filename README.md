@@ -139,6 +139,22 @@ are cached for at most 15 seconds; active WebSockets are rechecked every 15 seco
 revocation. Expensive checks are bounded to 16 concurrent requests, with 120 MCP/capability requests per IP
 per minute per gateway replica. These limits do not apply to ordinary design/file editing traffic.
 
+## Create org (admin only) and directory search
+
+Penpot OSS has no organization backend (it needs the proprietary Nitrate service; "+ CREATE ORG" is only an upsell
+modal). In UX Studio an **organization is a Penpot team**, created with Penpot's own `create-team` RPC using the
+**caller's own session cookie** (never a service account), so Penpot records the right owner.
+
+| Endpoint | Rules |
+|---|---|
+| `GET /auth-ui/capabilities` | `{"mcp":bool,"org":bool}`. `org` = the signed-in, AD-managed user holds the `ADMIN_ROLE` client role (default `penpot-admin`) in Keycloak **now** (live check, cached at most 10 s, fail-closed `false`). |
+| `POST /auth-ui/orgs` `{"name"}` | 401 without a session, 403 `{"error":"forbidden"}` without the role (always a live check, never the cache), 415 unless `application/json`, 403 for cross-site requests (`Sec-Fetch-Site` not same-origin, or `Origin` not `MCP_PUBLIC_ORIGIN`/same host), body max 4 KB, name trimmed 1-64 characters without control/format characters (400), 10 requests/min/user (429), Keycloak unreachable 503. Success `201 {"id","name"}`; Penpot refusals are mapped without internal detail (400/401/429/502). Audit: slog `org created` (user, team id, name) and `org create refused`. |
+| `GET /auth-ui/directory/users?q=` | Any signed-in user whose Keycloak account is still enabled (checked live, fail-closed). `q` below 2 characters gives `{"users":[]}`; above 64 characters, control characters or anything except letters, digits, space and `. - @ '` gives 400 (no `*`/`%`/`_` wildcards; bulk dumping is made hard, not impossible: repeated legitimate substrings can still enumerate slowly, so it is rate limited). Keycloak admin search through the Penpot client's service account (`view-users`, `query-users`), only `enabled` users with an e-mail (and, when `EMAIL_DOMAIN` is set, only that domain), max 10, answer `{"users":[{"username","name","email"}]}` and nothing else. 60 requests/min/user, `Cache-Control: no-store`, Keycloak errors give a generic 502. |
+
+All answers are JSON with `nosniff` and a `default-src 'none'` CSP. Keycloak lab provisioning (idempotent,
+`--check` default, `--apply`, `--undo`): `python3 scripts/provision_org_lab.py`. Add people to the Keycloak group
+`/penpot/admin` to let them create organizations. Details: [docs/ORG-DIRECTORY-2026-11-12.md](docs/ORG-DIRECTORY-2026-11-12.md).
+
 ## UI customizations
 
 The official `disable-onboarding` flag suppresses first-user onboarding. Gateway-injected, same-origin
@@ -166,7 +182,18 @@ node e2e/mcp_abuse.mjs
 
 ## Riwayat perubahan penting
 
+- 2026-11-12 — Claude Code (subagent): backend for "Create org (admin only)" (`POST /auth-ui/orgs` = Penpot team via the user's own session, `penpot-admin` role checked live), `org` in `/auth-ui/capabilities`, `GET /auth-ui/directory/users` (Keycloak directory search), shared Keycloak service-account helper, `scripts/provision_org_lab.py`, tests. Frontend by another agent. No DDL; no new env (uses existing `ADMIN_ROLE`, `EMAIL_DOMAIN`). Lab only, office 🟡.
 - 2026-11-12 — Claude Code: sign-out now also ends the Keycloak session (refresh token kept in memory per Penpot session, revoked on `logout`; lost on pod restart, then idle timeout applies) and Penpot's stock login route (`#/auth/login`) is hidden and redirected to the custom sign-in page at once. Frontend + auth-service only, no DDL/env. Lab only, office 🟡.
 - 2026-11-12 — Codex: role-based MCP gateway and native-token/session binding, security abuse tests, first-user onboarding and Enterprise banner suppression; password UI retained.
 
 Deployment/test evidence: [validation report](docs/VALIDATION-2026-11-12.md). Go1.27.4 is required; Go CI gates run sequentially. Lab acceptance account `lab-admin` was explicitly assigned the MCP group; this is a role grant, not an admin bypass.
+
+### Team creation is administrator-only everywhere (2026-11-12)
+
+Independent review found that Penpot's native RPC (`/api/rpc/command/create-team`, `create-team-with-invitations`,
+`create-team-in-organization`, also under `/api/main/methods/`) accepts any session cookie. The guard now answers 403
+`org-not-permitted` unless the caller holds `penpot-admin` right now (live Keycloak check, fail-closed). Consequence:
+ordinary users can no longer create teams from Penpot's own team menu either. The per-user rate limit is now atomic
+(`limiter.allow`). Tests: `TestDirectTeamCreateRPCNeedsAdmin`, `TestDirectoryRefusesInactiveCaller`,
+`TestLimiterAllowIsAtomic`. Known and unchanged: `clientIP` trusts the first `X-Forwarded-For` entry (ingress-dependent;
+per-user keys are unaffected).

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -163,4 +164,34 @@ func extractToken(body []byte) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no token in response")
+}
+
+// postJSON calls an RPC command with a JSON body and the caller's own session cookie (not a service account) and
+// decodes a 200 answer into out. It returns Penpot's HTTP status; err is set only when Penpot cannot be reached or
+// answers nonsense.
+func (p *Penpot) postJSON(ctx context.Context, command, cookie string, in, out any) (int, error) {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+p.rpcPath+"/"+command, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Cookie", cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return 0, errors.New("penpot unavailable")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		return resp.StatusCode, nil
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out); err != nil {
+		return resp.StatusCode, errors.New("penpot answer unreadable")
+	}
+	return resp.StatusCode, nil
 }

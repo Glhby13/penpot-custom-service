@@ -331,6 +331,31 @@ func (l *limiter) add(key string, window time.Duration) {
 	b.n++
 }
 
+// allow counts one use of key and reports whether it stays within limit per window. Check and increment happen
+// under one lock, so parallel requests cannot all read the same count.
+func (l *limiter) allow(key string, limit int, window time.Duration) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	if len(l.m) > 10000 {
+		for k, v := range l.m {
+			if now.After(v.expires) {
+				delete(l.m, k)
+			}
+		}
+	}
+	b, ok := l.m[key]
+	if !ok || now.After(b.expires) {
+		l.m[key] = &bucket{n: 1, expires: now.Add(window)}
+		return limit >= 1
+	}
+	if b.n >= limit {
+		return false
+	}
+	b.n++
+	return true
+}
+
 func (l *limiter) reset(key string) {
 	l.mu.Lock()
 	delete(l.m, key)
