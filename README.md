@@ -197,3 +197,10 @@ ordinary users can no longer create teams from Penpot's own team menu either. Th
 (`limiter.allow`). Tests: `TestDirectTeamCreateRPCNeedsAdmin`, `TestDirectoryRefusesInactiveCaller`,
 `TestLimiterAllowIsAtomic`. Known and unchanged: `clientIP` trusts the first `X-Forwarded-For` entry (ingress-dependent;
 per-user keys are unaffected).
+
+### Logo is HD (2026-11-12)
+
+`web/logo.png` and `web/logo-dark.png` were 400 / 800 px wide and looked blurry on retina screens and under browser zoom
+(the card shows the logo at 300 CSS px). Both are now 1600 px wide, cut from the 2172 px master by
+`scripts/make_logos.py "<master.png>"` (exact white-matte removal, only the navy "Studio" recoloured in the dark
+variant). Reusable method: canonical T3 skill `hd-image-assets`.
