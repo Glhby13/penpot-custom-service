@@ -28,7 +28,7 @@
   }
 
   function teamURL(id) {
-    return typeof id === 'string' && UUID_RE.test(id) ? '#/dashboard/projects?team-id=' + id : '';
+    return typeof id === 'string' && UUID_RE.test(id) ? '#/dashboard/recent?team-id=' + id : '';
   }
 
   function orgErrorMessage(status) {

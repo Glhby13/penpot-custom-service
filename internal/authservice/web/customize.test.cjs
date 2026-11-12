@@ -164,7 +164,7 @@ test('org name and team URL validation', async () => {
   assert.equal(validOrgName('bad\u0007name'), false);
   assert.equal(validOrgName(null), false);
   const id = '123e4567-e89b-12d3-a456-426614174000';
-  assert.equal(teamURL(id), '#/dashboard/projects?team-id=' + id);
+  assert.equal(teamURL(id), '#/dashboard/recent?team-id=' + id);
   assert.equal(teamURL('x/../y'), '');
   assert.equal(teamURL(undefined), '');
   assert.equal(orgErrorMessage(403), 'Only administrators can create organizations');
