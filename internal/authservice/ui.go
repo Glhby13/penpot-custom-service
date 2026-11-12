@@ -203,11 +203,17 @@ func newFrontendProxy(target string) (http.Handler, error) {
 			if pr.In.URL.Path == "/" {
 				pr.Out.Header.Del("Accept-Encoding")
 			}
-			for _, h := range []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-Ip"} {
+			for _, h := range []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Real-Ip"} {
 				if v := pr.In.Header.Values(h); len(v) > 0 {
 					pr.Out.Header[h] = v
 				}
 			}
+			// Do not pass X-Forwarded-Host to penpot-frontend. When penpot-frontend proxies
+			// S3 presigned asset redirects (@handle_redirect), an incoming X-Forwarded-Host header
+			// is forwarded to SeaweedFS S3, which causes AWS SigV4 SignatureDoesNotMatch
+			// because the presigned URL signature was computed by penpot-backend
+			// against the internal S3 endpoint host (192.168.128.9:8333).
+			pr.Out.Header.Del("X-Forwarded-Host")
 		},
 		// Penpot streams events and uses WebSockets: never hold output back.
 		FlushInterval:  -1,

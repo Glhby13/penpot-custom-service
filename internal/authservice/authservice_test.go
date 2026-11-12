@@ -444,3 +444,36 @@ func TestLoadConfigRequiresSecrets(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+func TestFrontendProxyStripsXForwardedHost(t *testing.T) {
+	var receivedHost string
+	var hasXFH bool
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHost = r.Host
+		_, hasXFH = r.Header["X-Forwarded-Host"]
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	proxy, err := newFrontendProxy(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/assets/test", nil)
+	req.Host = "uxstudio.lab.local"
+	req.Header.Set("X-Forwarded-Host", "uxstudio.lab.local")
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d", rec.Code)
+	}
+	if receivedHost != "uxstudio.lab.local" {
+		t.Errorf("expected host uxstudio.lab.local, got %q", receivedHost)
+	}
+	if hasXFH {
+		t.Errorf("X-Forwarded-Host must be stripped by reverse proxy, but was passed to backend")
+	}
+}

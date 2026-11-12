@@ -14,3 +14,5 @@ User authorized development, testing/security abuse, push, build and sync LAB on
 
 Parallel native agents: penpot_mcp owns auth/config/MCP; penpot_ui owns ui.go/web; storage_audit owns new scripts/report (no live mutation).
 Implementation b6c3b9e; Jenkins#7 SUCCESS; live tag b6c3b9e3; values a39d1c0; chart20629ed. Both Argo apps Synced/Healthy. Live MCP abuse55/55; Postman9/9; UI8+7; template5; local race/vet/lint/SCA pass. Harbor136→46 artifacts; GC/vacuum done; disk55→43%. Role lab-admin explicitly granted; lab-test restored. Remaining milestone: commit/push validation artifacts, monitor documentation/test-only build, final smoke and memory. Unknown unrelated .opencode/opencode.json left untouched, not committed.
+
+- [x] FINAL 2026-11-12: validation commit 0d8fe7c, Jenkins #8 SUCCESS (lint 0, SCA 0 vuln), Argo apps Synced/Healthy, smoke penpot 200 / mcp no-auth 403. DONE.
